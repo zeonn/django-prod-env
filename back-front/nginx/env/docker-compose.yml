@@ -1,0 +1,43 @@
+version: '2'
+
+
+services:
+    nginx:
+        image: nginx:1.11-alpine
+        container_name: nginx
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./docker/nginx/django.conf.template:/django.conf.template:ro
+            - ./docker/nginx/django-ssl.conf.template:/django-ssl.conf.template:ro
+            - ./docker/nginx/redmine.conf.template:/redmine.conf.template:ro
+            - ./docker/nginx/redmine-ssl.conf.template:/redmine-ssl.conf.template:ro
+            - ./docker/nginx/run.sh:/run.sh:ro
+            - /etc/letsencrypt:/etc/letsencrypt:ro
+            - /etc/ssl/certs/dhparam.pem:/etc/ssl/certs/dhparam.pem:ro
+            - ${WEBROOT_DIR}/.well-known:/site/.well-known:rw
+            - ${PROJECT_ROOT}/static:/site/${DJANGO_DOMAIN_NAME}/static:ro
+            - ${PROJECT_ROOT}/media:/site/${DJANGO_DOMAIN_NAME}/media:ro
+            - ${LOGS_DIR}:/logs
+        environment:
+            - DJANGO_DOMAIN_NAME=${DJANGO_DOMAIN_NAME}
+            - PROJECT_ROOT=${PROJECT_ROOT}
+            - REDMINE_DOMAIN_NAME=${REDMINE_DOMAIN_NAME}
+            - REDMINE_PORT=${REDMINE_PORT}
+            - FLOWER_PORT=${FLOWER_PORT}
+            - WEBROOT_DIR=${WEBROOT_DIR}
+            - GUNICORN_PORT=${GUNICORN_PORT}
+            - HTTPS=${HTTPS}
+        command: sh /run.sh
+        networks:
+            - django-proxy
+            - redmine-proxy
+        restart: unless-stopped
+
+
+networks:
+    django-proxy:
+        driver: bridge
+    redmine-proxy:
+        driver: bridge

@@ -1,0 +1,30 @@
+server {  
+	listen 80;
+	
+	server_name ${REDMINE_DOMAIN_NAME} www.${REDMINE_DOMAIN_NAME};
+	
+	charset utf-8;
+	
+	# max upload size
+	client_max_body_size 75M;
+
+	access_log /logs/nginx-access.log;
+	error_log /logs/nginx-error.log;
+	
+	location ~ /\.well-known/acme-challenge {
+		root /site;
+			allow all;
+		}
+
+	location / {
+		proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+		proxy_set_header Host ${DOLLAR}http_host;
+		proxy_set_header X-Real-IP ${DOLLAR}remote_addr;   
+		proxy_redirect off;
+		proxy_pass http://redmine:${REDMINE_PORT};
+		proxy_connect_timeout 75s;
+		proxy_read_timeout 300s;
+		uwsgi_read_timeout 1800;
+	}
+
+	}

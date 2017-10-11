@@ -1,0 +1,107 @@
+version: '2'
+
+
+services:
+    web:
+        build: ./docker/web
+        image: web
+        container_name: web
+        environment:
+            - ENV=prod
+            - GUNICORN_WORKERS_COUNT=${GUNICORN_WORKERS_COUNT}
+            - GUNICORN_PORT=${GUNICORN_PORT}
+            - DJANGO_MAIN_APP=${DJANGO_MAIN_APP}
+            - MYSQL_DATABASE=${MYSQL_DATABASE}
+            - MYSQL_USER=${MYSQL_USER}
+            - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+            - LANG=${LANG}
+        volumes:
+            - ${PROJECT_ROOT}:/site
+            - ${LOGS_DIR}:/logs
+            - ./docker/web/run.sh:/run.sh:ro
+        command: sh /run.sh
+        depends_on:
+            - db
+        networks:
+            - db
+            - proxy
+        restart: unless-stopped
+
+    nginx:
+        image: nginx:1.11-alpine
+        container_name: nginx
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./docker/nginx/nginx.conf.template:/nginx.conf.template:ro
+            - ./docker/nginx/nginx-ssl.conf.template:/nginx-ssl.conf.template:ro
+            - ./docker/nginx/run.sh:/run.sh:ro
+            - /etc/letsencrypt:/etc/letsencrypt:ro
+            - /etc/ssl/certs/dhparam.pem:/etc/ssl/certs/dhparam.pem:ro
+            - ${PROJECT_ROOT}/.well-known:/site/.well-known:rw
+            - ${PROJECT_ROOT}/static:/site/static:ro
+            - ${PROJECT_ROOT}/media:/site/media:ro
+            - ${LOGS_DIR}:/logs
+        environment:
+            - DOMAIN_NAME=${DOMAIN_NAME}
+            - GUNICORN_PORT=${GUNICORN_PORT}
+            - HTTPS=${HTTPS}
+        command: sh /run.sh
+        depends_on:
+            - web
+        networks:
+            - proxy
+        restart: unless-stopped
+
+    db:
+        image: mysql:5.7
+        container_name: db
+        volumes:
+            - database:/var/lib/mysql
+            - ./docker/db/mysql.cnf:/etc/mysql/conf.d/mysql.cnf
+        environment:
+            - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+            - MYSQL_DATABASE=${MYSQL_DATABASE}
+            - MYSQL_USER=${MYSQL_USER}
+            - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+        command:
+            - --character-set-server=utf8
+            - --collation-server=utf8_unicode_ci
+        restart: unless-stopped
+        networks:
+            - db
+
+    backup:
+        build: ./docker/backup
+        image: backup
+        container_name: backup
+        volumes:
+            - ${BACKUP_DIR}:/backup
+            - ./docker/backup/run.sh:/run.sh:ro
+            - ${LOGS_DIR}:/logs
+        environment:
+            - MYSQL_HOST=db
+            - MYSQL_PORT=3306
+            - MYSQL_USER=${MYSQL_USER}
+            - MYSQL_PASS=${MYSQL_PASSWORD}
+            - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+            - MYSQL_DB=${MYSQL_DATABASE}
+            - CRON_TIME=${BACKUP_CRON_TIME}
+            - MAX_BACKUPS=${MAX_BACKUPS}
+            - INIT_BACKUP=${INIT_BACKUP}
+            - INIT_RESTORE_LATEST=${INIT_RESTORE_LATEST}
+        command: bash /run.sh
+        depends_on:
+            - web
+        networks:
+            - db
+        restart: on-failure
+
+volumes:
+    database:
+
+
+networks:
+    proxy:
+    db:

@@ -1,0 +1,138 @@
+version: '2'
+
+
+services:
+    backend:
+        build: ./docker/backend
+        image: backend
+        container_name: backend
+        environment:
+            - ENV=prod
+            - GUNICORN_WORKERS_COUNT=${GUNICORN_WORKERS_COUNT}
+            - GUNICORN_PORT=${GUNICORN_PORT}
+            - DJANGO_MAIN_APP=${DJANGO_MAIN_APP}
+            - MYSQL_DATABASE=${MYSQL_DATABASE}
+            - MYSQL_USER=${MYSQL_USER}
+            - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+            - LANG=${LANG}
+            - BROKER_URL=${BROKER_URL}
+            - RABBITMQ_USER=${RABBITMQ_USER}
+            - RABBITMQ_PASS=${RABBITMQ_PASS}
+        volumes:
+            - ${PROJECT_ROOT}:/site
+            - ${LOGS_DIR}:/logs
+            - ./docker/backend/run.sh:/run.sh:ro
+        command: sh /run.sh
+        depends_on:
+            - django-db
+        networks:
+            - django-db
+            - env_django-proxy
+            - tasks
+        restart: unless-stopped
+
+    django-db:
+        image: mysql:5.7
+        container_name: django-db
+        volumes:
+            - database:/var/lib/mysql
+            - ./docker/db/mysql.cnf:/etc/mysql/conf.d/mysql.cnf
+        environment:
+            - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+            - MYSQL_DATABASE=${MYSQL_DATABASE}
+            - MYSQL_USER=${MYSQL_USER}
+            - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+        command:
+            - --character-set-server=utf8
+            - --collation-server=utf8_unicode_ci
+        restart: unless-stopped
+        networks:
+            - django-db
+
+    celery:
+        image: backend
+        container_name: celery
+        volumes:
+            - ${PROJECT_ROOT}:/site
+            - ${LOGS_DIR}:/logs
+        environment:
+            - DJANGO_MAIN_APP=${DJANGO_MAIN_APP}
+            - BROKER_URL=${BROKER_URL}
+            - RABBITMQ_USER=${RABBITMQ_USER}
+            - RABBITMQ_PASS=${RABBITMQ_PASS}
+            - ENV=prod
+            - C_FORCE_ROOT=true
+        command: celery -A ${DJANGO_MAIN_APP} worker -l error
+        depends_on:
+            - rabbit
+        networks:
+            - tasks
+            - django-db
+        restart: unless-stopped
+
+    rabbit:
+        image: rabbitmq:3.6.12-management-alpine
+        container_name: rabbit
+        environment:
+            - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+            - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
+        depends_on:
+            - backend
+        networks:
+            - tasks
+        restart: unless-stopped
+
+    flower:
+        image: backend
+        container_name: flower
+        volumes:
+            - ${PROJECT_ROOT}:/site
+            - ${LOGS_DIR}:/logs
+        environment:
+            - DJANGO_MAIN_APP=${DJANGO_MAIN_APP}
+            - BROKER_URL=${BROKER_URL}
+            - FLOWER_PORT=${FLOWER_PORT}
+            - ENV=prod
+        command: flower -A ${DJANGO_MAIN_APP} --port=${FLOWER_PORT} --broker=${BROKER_URL} --broker_api=http://admin:mypass@rabbit:15672/api/ --url_prefix=tasks
+        depends_on:
+            - celery
+        networks:
+            - tasks
+            - env_django-proxy
+        restart: unless-stopped
+
+    backup:
+        build: ./docker/backup
+        image: backup
+        container_name: backup
+        volumes:
+            - ${BACKUP_DIR}:/backup
+            - ./docker/backup/run.sh:/run.sh:ro
+            - ${LOGS_DIR}:/logs
+        environment:
+            - MYSQL_HOST=django-db
+            - MYSQL_PORT=3306
+            - MYSQL_USER=${MYSQL_USER}
+            - MYSQL_PASS=${MYSQL_PASSWORD}
+            - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+            - MYSQL_DB=${MYSQL_DATABASE}
+            - CRON_TIME=${BACKUP_CRON_TIME}
+            - MAX_BACKUPS=${MAX_BACKUPS}
+            - INIT_BACKUP=${INIT_BACKUP}
+            - INIT_RESTORE_LATEST=${INIT_RESTORE_LATEST}
+        command: bash /run.sh
+        depends_on:
+            - backend
+        networks:
+            - django-db
+        restart: on-failure
+
+volumes:
+    database:
+
+
+networks:
+    env_django-proxy:
+        external: true
+    django-db:
+    tasks:

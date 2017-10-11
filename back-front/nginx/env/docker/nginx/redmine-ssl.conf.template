@@ -1,0 +1,53 @@
+server {
+	listen 80;
+	server_name ${REDMINE_DOMAIN_NAME} www.${REDMINE_DOMAIN_NAME};
+        return 301 https://${DOLLAR}server_name${DOLLAR}request_uri;
+	server_tokens off;
+}
+
+server {  
+	listen 443 ssl http2;
+	server_name ${REDMINE_DOMAIN_NAME} www.${REDMINE_DOMAIN_NAME};
+	
+	charset utf-8;
+
+	client_max_body_size 75M;
+	keepalive_timeout 300s;
+
+	access_log /logs/nginx-access.log;
+	error_log /logs/nginx-error.log;
+	
+	# ssl
+	ssl_certificate /etc/letsencrypt/live/${MOLNIMONEY_DOMAIN_NAME}/fullchain.pem;
+	ssl_certificate_key /etc/letsencrypt/live/${MOLNIMONEY_DOMAIN_NAME}/privkey.pem;
+	ssl_dhparam /etc/ssl/certs/dhparam.pem;
+	ssl_session_timeout 1d;
+	ssl_session_cache shared:SSL:50m;
+	ssl_session_tickets off;
+	ssl_prefer_server_ciphers on;
+	ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+	ssl_ciphers kEECDH+AESGCM+AES128:kEECDH+AES128:kRSA+AESGCM+AES128:kRSA+AES128:!RC4:!aNULL:!eNULL:!MD5:!EXPORT:!LOW:!SEED:!CAMELLIA:!IDEA:!PSK:!SRP:!SSLv2;
+	add_header Strict-Transport-Security "max-age=15768000";
+	ssl_stapling on;
+	ssl_stapling_verify on;
+	resolver 8.8.4.4 8.8.8.8 valid=300s;
+	server_tokens off;
+
+	location ~ /\.well-known/acme-challenge {
+            root /site;
+            allow all;
+        }
+
+
+	location / {
+		proxy_pass http://redmine:${REDMINE_PORT};
+                proxy_set_header Host ${DOLLAR}host;
+                proxy_redirect http://${DOLLAR}host/ /;
+                proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+                proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+                proxy_set_header Ssl-Offloaded "1";
+                proxy_hide_header X-Forwarded-Proto;
+                proxy_set_header X-Forwarded-Proto "https";
+	}
+
+}

@@ -1,0 +1,45 @@
+server {  
+	listen 80;
+	
+	server_name ${DJANGO_DOMAIN_NAME} www.${DJANGO_DOMAIN_NAME};
+	
+	charset utf-8;
+	
+	# max upload size
+	client_max_body_size 75M;
+
+	access_log /logs/nginx-access.log;
+	error_log /logs/nginx-error.log;
+	
+	location ~ /\.well-known/acme-challenge {
+		root /site;
+			allow all;
+		}
+
+	location / {
+		proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+		proxy_set_header Host ${DOLLAR}http_host;
+		proxy_set_header X-Real-IP ${DOLLAR}remote_addr;   
+		proxy_redirect off;
+		proxy_pass http://backend:${GUNICORN_PORT};
+		proxy_connect_timeout 75s;
+		proxy_read_timeout 300s;
+		uwsgi_read_timeout 1800;
+	}
+
+	location = /favicon.ico {
+		access_log off;
+		log_not_found off;
+		alias /site/${DJANGO_DOMAIN_NAME}/favicon.ico;
+	}
+
+	location /static {
+		autoindex on;
+		alias /site/${DJANGO_DOMAIN_NAME}/static/;
+	}
+
+	location /media {
+		autoindex on;
+		alias /site/${DJANGO_DOMAIN_NAME}/media/;
+	}
+	}
